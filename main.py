@@ -4,9 +4,10 @@ import os
 import fnmatch
 import shutil
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 
-PS_REPO_PATH = "[복사할 데이터]"
-GIT_REPO_PATH = "[복사할 데이터가 갈 장소]"
+PS_REPO_PATH = "[저장할 데이터 디렉토리]"
+GIT_REPO_PATH = "[저장소 디렉토리]"
 
 url = 'https://solved.ac/api/v3/problem/show?problemId='
 
@@ -48,38 +49,33 @@ def check_level(number):
     response = requests.get(url + number)
     if response.status_code == 200:  # 정상 응답 반환 시 아래 코드블록 실행
         return dict_level[response.json().get("level")]
-    
+    else:
+        print(f"error: {response.status_code}")
     return "ERROR"
 
+def upload(file):    
+    problem_number = file.split()[0]
+
+    level = check_level(problem_number)
+            
+    now_path = GIT_REPO_PATH + "\\" + level
+    if not os.path.exists(now_path):
+        os.makedirs(now_path)
+            
+    file_from = PS_REPO_PATH + "\\" + file
+    file_to = now_path + "\\" + file
+    shutil.copy(file_from, file_to)
+    
 def upload_all():
-    flag = False
-    cnt = 0
+    flag = True
 
-    for file in os.listdir(PS_REPO_PATH) :
-        # 해당 파일이 엑셀 파일이면 수행할 작업
-        if fnmatch.fnmatch(file, '*.cpp') or fnmatch.fnmatch(file, '*.c'):
-            problem_number = file.split()[0]
+    files = [file for file in os.listdir(PS_REPO_PATH) if fnmatch.fnmatch(file, '*.cpp') or fnmatch.fnmatch(file, '*.c')]
 
-            level = check_level(problem_number)
-            if level == "ERROR":
-                print("문제 번호가 잘못되었습니다.")
-                continue
-            
-            now_path = GIT_REPO_PATH + "\\" + level
-            if not os.path.exists(now_path):
-                os.makedirs(now_path)
-            
-            if file in os.listdir(now_path):
-                #print("존재합니다")
-                pass
-            else:
-                flag = True
-                cnt += 1
-                file_from = PS_REPO_PATH + "\\" + file
-                file_to = now_path + "\\" + file
-                shutil.copy(file_from, file_to)
+    with ThreadPoolExecutor(max_workers=os.cpu_count())  as executor:
+        executor.map(upload, files)
+        
     if flag == True:
-        git_commit_push("add problem "+str(cnt)+"개")
+        git_commit_push("add problem")
     else:
         print("커밋 & 푸시를 진행하지 않습니다.")
 
